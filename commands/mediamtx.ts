@@ -78,10 +78,12 @@ export default class Mediamtx extends BaseCommand {
       this.logger.error(`MediaMTX Release ${name} does not have a known OpenAPI manifest path`)
       process.exit(1)
     }
-    const dest = join(BASE_DIR, 'tmp', asset.name)
-    const binary = join(BASE_DIR, 'tmp', 'mediamtx')
-    const manifest = join(BASE_DIR, 'tmp', 'mediamtx.yaml')
-    const openapiManifest = join(BASE_DIR, 'tmp', 'mediamtx.openapi.yaml')
+    const tmpDir = join(BASE_DIR, 'tmp')
+    await fs.promises.mkdir(tmpDir, { recursive: true })
+    const dest = join(tmpDir, asset.name)
+    const binary = join(tmpDir, 'mediamtx')
+    const manifest = join(tmpDir, 'mediamtx.yaml')
+    const openapiManifest = join(tmpDir, 'mediamtx.openapi.yaml')
     await Promise.all([
       fs.promises.writeFile(dest, releaseFile),
       fs.promises.writeFile(openapiManifest, openApiManifestFile),

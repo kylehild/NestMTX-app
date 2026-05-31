@@ -271,7 +271,7 @@ export class StreamerService {
         {
           file: 'node',
           arguments: ['ace', 'nestmtx:stream', payload.MTX_PATH, this.#internalApiPort!.toString()],
-          restart: true,
+          restart: !!(camera && camera.isPersistent),
         },
         true
       )
@@ -279,7 +279,7 @@ export class StreamerService {
   }
 
   async #onUnDemand(payload: DemandEventPayload) {
-    this.#logger?.info(`Received demand for "${payload.MTX_PATH}"`)
+    this.#logger?.info(`Received undemand for "${payload.MTX_PATH}"`)
     let camera: Camera | null | undefined
     try {
       camera = await Camera.findBy({ mtx_path: payload.MTX_PATH })
@@ -295,6 +295,10 @@ export class StreamerService {
         `Camera ${camera.name} (#${camera.id}) for path "${payload.MTX_PATH}" is persistent and will not be shut down`
       )
       return
+    }
+    if (this.#internalApiServer) {
+      this.#internalApiServer.emit(`${payload.MTX_PATH}:undemand`)
+      this.#logger?.info(`Sent ${payload.MTX_PATH}:undemand to stream process`)
     }
     const processName = this.#getMtxProcessName(payload.MTX_PATH)
     const process = this.#app.pm3.get(processName)
@@ -370,5 +374,11 @@ export class StreamerService {
         readerId: payload.MTX_READER_ID,
       })
     } catch {}
+    const livePath = this.#app.mediamtx.paths.find((path) => path.path === payload.MTX_PATH)
+    const consumers = livePath && typeof livePath.consumers === 'number' ? livePath.consumers : 0
+    if (camera && camera.isEnabled && !camera.isPersistent && consumers <= 0) {
+      this.#logger?.info(`Stopping non-persistent stream after unread for ${payload.MTX_PATH}`)
+      await this.#onUnDemand(payload)
+    }
   }
 }

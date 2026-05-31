@@ -188,6 +188,10 @@ export default class NestmtxStream extends BaseCommand {
       this.#api.on(`${this.path}:stall`, () => {
         this.#bus.emit('stall')
       })
+      this.#api.on(`${this.path}:undemand`, () => {
+        logger.info(`Received undemand signal for ${this.path}`)
+        this.#gracefulExit(0)
+      })
       Promise.all([
         new Promise<void>((r) => {
           this.#api!.once('ice', (iceServers: RTCIceServer[]) => {
@@ -315,6 +319,7 @@ export default class NestmtxStream extends BaseCommand {
   }
 
   #startOutputStreamer() {
+    this.#outputStreamLogger.info('Output copy remux enabled')
     const ffmpegBinary = env.get('FFMPEG_BIN', 'ffmpeg')
     const ffmpegArgs = [
       '-loglevel',
@@ -329,36 +334,9 @@ export default class NestmtxStream extends BaseCommand {
       '-i',
       `pipe:3`,
 
-      // Hardware-accelerated encoding arguments (no conflict now)
-      ...this.#hardwareAcceleratedEncodingArguments,
-
-      // Other video options such as tune, bitrate, etc.
-      '-tune',
-      'zerolatency', // Tune for low latency
-      '-x264opts',
-      'bframes=0', // No B-frames
-      '-preset',
-      'ultrafast', // Ultrafast preset
-      '-b:v',
-      '100k', // Set video bitrate dynamically
-      '-r',
-      '10', // Set frame rate dynamically
-
-      // Set pixel format to avoid deprecated warning
-      '-pix_fmt',
-      'yuv420p',
-
-      // AAC Audio Stream (track 1)
-      '-c:a:0',
-      'aac',
-      '-b:a:0',
-      '128k', // Audio bitrate for AAC
-
-      // Opus Audio Stream (track 2)
-      '-c:a:1',
-      'libopus',
-      '-b:a:1',
-      '128k', // Audio bitrate for Opus
+      // Remux the already encoded camera/static streams instead of re-encoding them.
+      '-c',
+      'copy',
 
       // Explicit Mapping of Video and Audio Streams
       '-map',

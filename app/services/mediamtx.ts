@@ -84,6 +84,20 @@ export class MediaMTXService {
     return [...this.#paths].map(([, path]) => path)
   }
 
+  #getMediaMtxEventCommand(event: string) {
+    const ipcSocketPath = this.#app.makePath('resources/ipc.sock')
+    const ipcEventScript = [
+      'const net=require("node:net")',
+      'const event=process.argv[1]',
+      'const keys=["MTX_PATH","MTX_QUERY","RTSP_PORT","MTX_SOURCE_TYPE","MTX_SOURCE_ID","MTX_READER_TYPE","MTX_READER_ID","MTX_SEGMENT_PATH"]',
+      'const body=Object.fromEntries(keys.map((key)=>[key,process.env[key]??""]))',
+      `const socketPath=${JSON.stringify(ipcSocketPath)}`,
+      'const client=net.connect(socketPath,()=>client.end(JSON.stringify([event,body])))',
+      'client.on("error",(error)=>{console.error(error.message);process.exit(1)})',
+    ].join(';')
+    return ['node', '-e', JSON.stringify(ipcEventScript), event].join(' ')
+  }
+
   async boot(_logger: LoggerService, nat: NATService, ice: ICEService, pm3: PM3) {
     pm3.on('stdout:mediamtx', (data) => {
       this.#logFromMediaMtx(data)
@@ -101,7 +115,6 @@ export class MediaMTXService {
         await fs.mkdir(this.#app.tmpPath('hls'))
       } catch {}
     }
-    const baseRunOnCommand = ['node', this.#app.makePath('ace.js'), 'mediamtx:on:event']
     const updated: any = {
       ...mediaMtxConfig,
       readTimeout: '60s',
@@ -204,18 +217,18 @@ export class MediaMTXService {
       pathDefaults: {
         // runOnInit: [...baseRunOnCommand, 'init'].join(' '),
         // runOnInitRestart: false,
-        runOnDemand: [...baseRunOnCommand, 'demand'].join(' '),
-        runOnDemandStartTimeout: '60s',
+        runOnDemand: this.#getMediaMtxEventCommand('demand'),
+        runOnDemandStartTimeout: env.get('MEDIA_MTX_RUN_ON_DEMAND_START_TIMEOUT', '180s'),
         runOnDemandRestart: false,
-        runOnUnDemand: [...baseRunOnCommand, 'unDemand'].join(' '),
-        runOnReady: [...baseRunOnCommand, 'ready'].join(' '),
+        runOnUnDemand: this.#getMediaMtxEventCommand('unDemand'),
+        runOnReady: this.#getMediaMtxEventCommand('ready'),
         runOnReadyRestart: false,
-        runOnNotReady: [...baseRunOnCommand, 'notReady'].join(' '),
-        runOnRead: [...baseRunOnCommand, 'read'].join(' '),
+        runOnNotReady: this.#getMediaMtxEventCommand('notReady'),
+        runOnRead: this.#getMediaMtxEventCommand('read'),
         runOnReadRestart: false,
-        runOnUnread: [...baseRunOnCommand, 'unread'].join(' '),
-        runOnRecordSegmentCreate: [...baseRunOnCommand, 'recordSegmentCreate'].join(' '),
-        runOnRecordSegmentComplete: [...baseRunOnCommand, 'recordSegmentComplete'].join(' '),
+        runOnUnread: this.#getMediaMtxEventCommand('unread'),
+        runOnRecordSegmentCreate: this.#getMediaMtxEventCommand('recordSegmentCreate'),
+        runOnRecordSegmentComplete: this.#getMediaMtxEventCommand('recordSegmentComplete'),
       },
       /**
        * Update the path configuration

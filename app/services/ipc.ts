@@ -36,6 +36,7 @@ export class IPCService extends EventEmitter {
           }
           this.emit(event, ...data)
           this.#log.info(`Emitted event: ${event}`)
+          socket.end()
         } catch {
           this.#log.error(`Failed to parse incoming data: ${asString}`)
           return

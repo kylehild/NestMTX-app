@@ -50,15 +50,34 @@ export default class Mediamtx extends BaseCommand {
     } else {
       this.logger.info(`Found Asset ${asset.name} for ${platform} ${arch}`)
     }
-    const openApiManifestUrl = `https://raw.githubusercontent.com/bluenviron/mediamtx/${name}/api/openapi.yaml`
-    const [{ data: releaseFile }, { data: openApiManifestFile }] = await Promise.all([
-      axios.get(asset.browser_download_url, {
-        responseType: 'arraybuffer',
-      }),
-      axios.get(openApiManifestUrl, {
-        responseType: 'arraybuffer',
-      }),
-    ])
+    const openApiManifestUrls = [
+      `https://raw.githubusercontent.com/bluenviron/mediamtx/${name}/api/openapi.yaml`,
+      `https://raw.githubusercontent.com/bluenviron/mediamtx/${name}/apidocs/openapi.yaml`,
+      `https://raw.githubusercontent.com/bluenviron/mediamtx/${name}/api/openapi.yml`,
+      `https://raw.githubusercontent.com/bluenviron/mediamtx/${name}/apidocs/openapi.yml`,
+    ]
+    const { data: releaseFile } = await axios.get(asset.browser_download_url, {
+      responseType: 'arraybuffer',
+    })
+    let openApiManifestFile: Buffer | undefined
+    for (const openApiManifestUrl of openApiManifestUrls) {
+      try {
+        const response = await axios.get(openApiManifestUrl, {
+          responseType: 'arraybuffer',
+        })
+        openApiManifestFile = response.data
+        this.logger.info(`Found MediaMTX OpenAPI manifest at ${openApiManifestUrl}`)
+        break
+      } catch (error) {
+        if (!axios.isAxiosError(error) || error.response?.status !== 404) {
+          throw error
+        }
+      }
+    }
+    if (!openApiManifestFile) {
+      this.logger.error(`MediaMTX Release ${name} does not have a known OpenAPI manifest path`)
+      process.exit(1)
+    }
     const dest = join(BASE_DIR, 'tmp', asset.name)
     const binary = join(BASE_DIR, 'tmp', 'mediamtx')
     const manifest = join(BASE_DIR, 'tmp', 'mediamtx.yaml')

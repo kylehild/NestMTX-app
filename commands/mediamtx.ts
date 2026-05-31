@@ -20,27 +20,37 @@ export default class Mediamtx extends BaseCommand {
   static options: CommandOptions = {}
 
   async run() {
-    const { data: releases } = await octokit.rest.repos.listReleases({
-      owner: 'bluenviron',
-      repo: 'mediamtx',
-      per_page: 1,
-    })
-    const latest = releases[0]
-    this.logger.info(`Found MediaMTX Release ${latest.name}`)
-    const { name, assets } = latest
+    const mediaMtxVersion = env.get('MEDIA_MTX_VERSION')
+    let latest: Awaited<ReturnType<typeof octokit.rest.repos.getReleaseByTag>>['data']
+    if (mediaMtxVersion) {
+      const response = await octokit.rest.repos.getReleaseByTag({
+        owner: 'bluenviron',
+        repo: 'mediamtx',
+        tag: mediaMtxVersion,
+      })
+      latest = response.data
+    } else {
+      const response = await octokit.rest.repos.listReleases({
+        owner: 'bluenviron',
+        repo: 'mediamtx',
+        per_page: 1,
+      })
+      latest = response.data[0]
+    }
+    const name = latest.tag_name || latest.name!
+    const { assets } = latest
+    this.logger.info(`Found MediaMTX Release ${name}`)
     const platform = os.platform()
     const arch = os.arch().replace('x64', 'amd64')
     const nameMatch = ['mediamtx', name, platform, arch].join('_')
     const asset = assets.find((a) => a.name.startsWith(nameMatch))
     if (!asset) {
-      this.logger.error(
-        `MediaMTX Release ${latest.name} does not have a binary for ${platform} ${arch}`
-      )
+      this.logger.error(`MediaMTX Release ${name} does not have a binary for ${platform} ${arch}`)
       process.exit(1)
     } else {
       this.logger.info(`Found Asset ${asset.name} for ${platform} ${arch}`)
     }
-    const openApiManifestUrl = `https://raw.githubusercontent.com/bluenviron/mediamtx/${latest.name}/api/openapi.yaml`
+    const openApiManifestUrl = `https://raw.githubusercontent.com/bluenviron/mediamtx/${name}/api/openapi.yaml`
     const [{ data: releaseFile }, { data: openApiManifestFile }] = await Promise.all([
       axios.get(asset.browser_download_url, {
         responseType: 'arraybuffer',
@@ -126,7 +136,7 @@ export default class Mediamtx extends BaseCommand {
     ) {
       openApiDefinitionsObject.info = {}
     }
-    openApiDefinitionsObject.info.version = latest.name!.replace(/^v/, '')
+    openApiDefinitionsObject.info.version = name.replace(/^v/, '')
     const openApiDefinitionsDestination = join(BASE_DIR, 'lib', 'mediamtx', 'definition.ts')
     await fs.promises.writeFile(
       openApiDefinitionsDestination,

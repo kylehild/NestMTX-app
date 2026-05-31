@@ -143,11 +143,14 @@ export default class Mediamtx extends BaseCommand {
     await fs.promises.rm(unzippedDest, { recursive: true })
     await fs.promises.chmod(dstPath, 0o755)
     this.logger.success(`Installed MediaMTX ${name} to ${dstPath}`)
+    const formatGeneratedTypes = env.get('MEDIA_MTX_FORMAT_GENERATED_TYPES', false)
     this.logger.info(`Generating type definitions for the MediaMTX API Client`)
     const { stdout } = await execa('npx', ['openapi-client-axios-typegen', openapiManifest])
     const typesDestination = join(BASE_DIR, 'lib', 'mediamtx', 'types.ts')
     await fs.promises.writeFile(typesDestination, stdout)
-    await execa('npx', ['eslint', '--fix', typesDestination])
+    if (formatGeneratedTypes) {
+      await execa('npx', ['eslint', '--fix', typesDestination])
+    }
     this.logger.success(`Generated MediaMTX API Client Type Definitions`)
     this.logger.info(`Generating api specification definitions for the MediaMTX API Client`)
     const openApiDefinitionsObject = YAML.parse(openApiManifestFile.toString())
@@ -165,7 +168,9 @@ export default class Mediamtx extends BaseCommand {
 const definition: OpenAPIV3.Document = ${JSON.stringify(openApiDefinitionsObject)}
 export default definition`
     )
-    await execa('npx', ['eslint', '--fix', openApiDefinitionsDestination])
+    if (formatGeneratedTypes) {
+      await execa('npx', ['eslint', '--fix', openApiDefinitionsDestination])
+    }
     this.logger.success(`Generated api specification definitions for the MediaMTX API Client`)
   }
 }

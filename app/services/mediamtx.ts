@@ -219,6 +219,7 @@ export class MediaMTXService {
         // runOnInitRestart: false,
         runOnDemand: this.#getMediaMtxEventCommand('demand'),
         runOnDemandStartTimeout: env.get('MEDIA_MTX_RUN_ON_DEMAND_START_TIMEOUT', '180s'),
+        runOnDemandCloseAfter: env.get('MEDIA_MTX_RUN_ON_DEMAND_CLOSE_AFTER', '180s'),
         runOnDemandRestart: false,
         runOnUnDemand: this.#getMediaMtxEventCommand('unDemand'),
         runOnReady: this.#getMediaMtxEventCommand('ready'),

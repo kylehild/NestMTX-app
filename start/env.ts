@@ -168,6 +168,7 @@ export default await Env.create(new URL('../', import.meta.url), {
   NESTMTX_WEB_RTC_PORT: Env.schema.number.optional(),
   NESTMTX_WEB_RTC_UDP_PORT: Env.schema.number.optional(),
   NESTMTX_SRT_PORT: Env.schema.number.optional(),
+  NESTMTX_OUTPUT_AUDIO_ENABLED: Env.schema.boolean.optional(),
   /**
    * Dropcam Configuration
    */

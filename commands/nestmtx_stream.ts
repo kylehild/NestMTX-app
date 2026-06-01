@@ -88,6 +88,10 @@ export default class NestmtxStream extends BaseCommand {
     return env.get('FFMPEG_LOG_LEVEL', env.get('FFMPEG_DEBUG_LEVEL', 'error'))
   }
 
+  get #outputAudioEnabled() {
+    return env.get('NESTMTX_OUTPUT_AUDIO_ENABLED', true)
+  }
+
   get #streamerPassthroughSock() {
     return this.app.makePath('resources', `streamer.${process.pid}.sock`)
   }
@@ -374,25 +378,33 @@ export default class NestmtxStream extends BaseCommand {
       '-pix_fmt',
       'yuv420p',
 
-      // AAC Audio Stream (track 1)
-      '-c:a:0',
-      'aac',
-      '-b:a:0',
-      '128k',
+      ...(this.#outputAudioEnabled
+        ? [
+            // AAC Audio Stream (track 1)
+            '-c:a:0',
+            'aac',
+            '-b:a:0',
+            '128k',
 
-      // Opus Audio Stream (track 2)
-      '-c:a:1',
-      'libopus',
-      '-b:a:1',
-      '128k',
+            // Opus Audio Stream (track 2)
+            '-c:a:1',
+            'libopus',
+            '-b:a:1',
+            '128k',
+          ]
+        : ['-an']),
 
       // Explicit Mapping of Video and Audio Streams
       '-map',
       '0:v:0', // Map the first video track (H.264)
-      '-map',
-      '0:a:0', // Map the first audio track (AAC)
-      '-map',
-      '0:a:1', // Map the second audio track (Opus)
+      ...(this.#outputAudioEnabled
+        ? [
+            '-map',
+            '0:a:0', // Map the first audio track (AAC)
+            '-map',
+            '0:a:1', // Map the second audio track (Opus)
+          ]
+        : []),
 
       // Output Format
       '-f',
@@ -496,10 +508,14 @@ export default class NestmtxStream extends BaseCommand {
       ...this.#hardwareAcceleratedDecodingArguments,
       '-i',
       `${src}`,
-      '-f',
-      'lavfi',
-      '-i',
-      'anullsrc=r=48000:cl=stereo', // Synthetic audio source
+      ...(this.#outputAudioEnabled
+        ? [
+            '-f',
+            'lavfi',
+            '-i',
+            'anullsrc=r=48000:cl=stereo', // Synthetic audio source
+          ]
+        : []),
       // Hardware-accelerated encoding arguments (no conflict now)
       ...this.#hardwareAcceleratedEncodingArguments,
       '-profile:v',
@@ -513,25 +529,33 @@ export default class NestmtxStream extends BaseCommand {
       '-pix_fmt',
       'yuv420p',
 
-      // AAC Audio Stream (track 1)
-      '-c:a:0',
-      'aac',
-      '-b:a:0',
-      '128k', // Audio bitrate for AAC
+      ...(this.#outputAudioEnabled
+        ? [
+            // AAC Audio Stream (track 1)
+            '-c:a:0',
+            'aac',
+            '-b:a:0',
+            '128k', // Audio bitrate for AAC
 
-      // Opus Audio Stream (track 2)
-      '-c:a:1',
-      'libopus',
-      '-b:a:1',
-      '128k', // Audio bitrate for Opus
+            // Opus Audio Stream (track 2)
+            '-c:a:1',
+            'libopus',
+            '-b:a:1',
+            '128k', // Audio bitrate for Opus
+          ]
+        : ['-an']),
 
       // Mapping inputs and outputs
       '-map',
       '0:v', // Map the video input to the H.264 video stream (image source)
-      '-map',
-      '1:a', // Map the synthetic audio source to the AAC stream
-      '-map',
-      '1:a', // Map the synthetic audio source again for Opus encoding
+      ...(this.#outputAudioEnabled
+        ? [
+            '-map',
+            '1:a', // Map the synthetic audio source to the AAC stream
+            '-map',
+            '1:a', // Map the synthetic audio source again for Opus encoding
+          ]
+        : []),
 
       '-f',
       'mpegts',
@@ -702,25 +726,33 @@ export default class NestmtxStream extends BaseCommand {
       '-threads',
       '1',
 
-      // AAC Audio Stream
-      '-c:a:0',
-      'aac',
-      '-b:a:0',
-      '128k', // Audio bitrate for AAC
+      ...(this.#outputAudioEnabled
+        ? [
+            // AAC Audio Stream
+            '-c:a:0',
+            'aac',
+            '-b:a:0',
+            '128k', // Audio bitrate for AAC
 
-      // Opus Audio Stream
-      '-c:a:1',
-      'libopus',
-      '-b:a:1',
-      '128k', // Audio bitrate for Opus
+            // Opus Audio Stream
+            '-c:a:1',
+            'libopus',
+            '-b:a:1',
+            '128k', // Audio bitrate for Opus
+          ]
+        : ['-an']),
 
       // Mapping inputs and outputs
       '-map',
       '0:v', // Map the video input to the H.264 video stream
-      '-map',
-      '0:a', // Map the original AAC audio to the first audio track
-      '-map',
-      '0:a', // Map the original audio again for Opus encoding
+      ...(this.#outputAudioEnabled
+        ? [
+            '-map',
+            '0:a', // Map the original AAC audio to the first audio track
+            '-map',
+            '0:a', // Map the original audio again for Opus encoding
+          ]
+        : []),
 
       '-f',
       'mpegts',
@@ -1062,25 +1094,33 @@ a=rtcp:${audioRTCPPort}
       '-threads',
       '1',
 
-      // AAC Audio Stream (track 1)
-      '-c:a:0',
-      'aac',
-      '-b:a:0',
-      '128k', // Audio bitrate for AAC
+      ...(this.#outputAudioEnabled
+        ? [
+            // AAC Audio Stream (track 1)
+            '-c:a:0',
+            'aac',
+            '-b:a:0',
+            '128k', // Audio bitrate for AAC
 
-      // Opus Audio Stream (track 2)
-      '-c:a:1',
-      'libopus',
-      '-b:a:1',
-      '128k', // Audio bitrate for Opus
+            // Opus Audio Stream (track 2)
+            '-c:a:1',
+            'libopus',
+            '-b:a:1',
+            '128k', // Audio bitrate for Opus
+          ]
+        : ['-an']),
 
       // Mapping inputs and outputs
       '-map',
       '0:v', // Map the video input to the H.264 video stream
-      '-map',
-      '0:a', // Map the original AAC audio to the first audio track
-      '-map',
-      '0:a', // Map the original audio again for Opus encoding
+      ...(this.#outputAudioEnabled
+        ? [
+            '-map',
+            '0:a', // Map the original AAC audio to the first audio track
+            '-map',
+            '0:a', // Map the original audio again for Opus encoding
+          ]
+        : []),
 
       // Muxing into MPEG-TS
       '-f',

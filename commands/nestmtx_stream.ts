@@ -319,7 +319,7 @@ export default class NestmtxStream extends BaseCommand {
   }
 
   #startOutputStreamer() {
-    this.#outputStreamLogger.info('Output copy remux enabled')
+    this.#outputStreamLogger.info('Output transcoding enabled')
     const ffmpegBinary = env.get('FFMPEG_BIN', 'ffmpeg')
     const ffmpegArgs = [
       '-loglevel',
@@ -334,9 +334,32 @@ export default class NestmtxStream extends BaseCommand {
       '-i',
       `pipe:3`,
 
-      // Remux the already encoded camera/static streams instead of re-encoding them.
-      '-c',
-      'copy',
+      // Transcode WebRTC-derived RTP into a clean stream for MediaMTX.
+      ...this.#hardwareAcceleratedEncodingArguments,
+      '-tune',
+      'zerolatency',
+      '-x264opts',
+      'bframes=0',
+      '-preset',
+      'ultrafast',
+      '-b:v',
+      '100k',
+      '-r',
+      '10',
+      '-pix_fmt',
+      'yuv420p',
+
+      // AAC Audio Stream (track 1)
+      '-c:a:0',
+      'aac',
+      '-b:a:0',
+      '128k',
+
+      // Opus Audio Stream (track 2)
+      '-c:a:1',
+      'libopus',
+      '-b:a:1',
+      '128k',
 
       // Explicit Mapping of Video and Audio Streams
       '-map',

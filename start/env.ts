@@ -134,6 +134,18 @@ export default await Env.create(new URL('../', import.meta.url), {
     'debug',
     'trace',
   ] as const),
+  FFMPEG_LOG_LEVEL: Env.schema.enum.optional([
+    'quiet',
+    'panic',
+    'fatal',
+    'error',
+    'warning',
+    'info',
+    'verbose',
+    'debug',
+    'trace',
+  ] as const),
+  STREAMER_PRIVATE_API_DISCONNECT_EXIT_AFTER_MS: Env.schema.number.optional(),
   /**
    * WebRTC Configuration
    */

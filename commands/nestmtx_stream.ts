@@ -84,6 +84,10 @@ export default class NestmtxStream extends BaseCommand {
     return logger.child({ stream: 'static' })
   }
 
+  get #ffmpegLogLevel() {
+    return env.get('FFMPEG_LOG_LEVEL', env.get('FFMPEG_DEBUG_LEVEL', 'error'))
+  }
+
   get #streamerPassthroughSock() {
     return this.app.makePath('resources', `streamer.${process.pid}.sock`)
   }
@@ -168,19 +172,40 @@ export default class NestmtxStream extends BaseCommand {
     await new Promise<void>((resolve) => {
       this.#api = io(privateApiServerUrl, {
         autoConnect: false,
-        reconnection: false,
-        timeout: 1000,
+        reconnection: true,
+        reconnectionAttempts: Number.POSITIVE_INFINITY,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+        timeout: 5000,
       })
-      this.#api.once('error', () => {
-        logger.error(`Private API Server not found`)
-        process.exit(1)
+      let connectedOnce = false
+      let disconnectExitTimer: NodeJS.Timeout | undefined
+      const clearDisconnectExitTimer = () => {
+        if (disconnectExitTimer) {
+          clearTimeout(disconnectExitTimer)
+          disconnectExitTimer = undefined
+        }
+      }
+      this.#abortController.signal.addEventListener('abort', clearDisconnectExitTimer)
+      this.#api.on('connect_error', (error) => {
+        if (!connectedOnce) {
+          logger.error(`Private API Server not found: ${error.message}`)
+          process.exit(1)
+        }
+        logger.warning(`Private API Server reconnect failed: ${error.message}`)
       })
-      this.#api.once('connect', () => {
+      this.#api.on('connect', () => {
+        connectedOnce = true
+        clearDisconnectExitTimer()
         logger.info(`Private API Server connected`)
       })
-      this.#api.once('disconnect', () => {
-        logger.error(`Private API Server disconnected`)
-        process.exit(1)
+      this.#api.on('disconnect', (reason) => {
+        logger.warning(`Private API Server disconnected: ${reason}`)
+        clearDisconnectExitTimer()
+        disconnectExitTimer = setTimeout(() => {
+          logger.error(`Private API Server did not reconnect; exiting`)
+          process.exit(1)
+        }, env.get('STREAMER_PRIVATE_API_DISCONNECT_EXIT_AFTER_MS', 60000))
       })
       this.#api.on('test:stall', () => {
         this.#bus.emit('stall')
@@ -323,7 +348,7 @@ export default class NestmtxStream extends BaseCommand {
     const ffmpegBinary = env.get('FFMPEG_BIN', 'ffmpeg')
     const ffmpegArgs = [
       '-loglevel',
-      env.get('FFMPEG_DEBUG_LEVEL', 'warning'),
+      this.#ffmpegLogLevel,
       '-fflags',
       '+discardcorrupt', // Ignore corrupted frames
 
@@ -464,7 +489,7 @@ export default class NestmtxStream extends BaseCommand {
     const ffmpegBinary = env.get('FFMPEG_BIN', 'ffmpeg')
     const ffmpegArgs = [
       '-loglevel',
-      env.get('FFMPEG_DEBUG_LEVEL', 'warning'),
+      this.#ffmpegLogLevel,
       '-loop',
       '1',
       // Hardware-accelerated decoding arguments
@@ -635,7 +660,7 @@ export default class NestmtxStream extends BaseCommand {
 
     const ffmpegArgs: string[] = [
       '-loglevel',
-      env.get('FFMPEG_DEBUG_LEVEL', 'warning'), // Suppress most log messages, only show warnings
+      this.#ffmpegLogLevel,
       '-fflags',
       '+discardcorrupt+nobuffer', // Ignore corrupted frames and minimize buffering
 
@@ -673,6 +698,10 @@ export default class NestmtxStream extends BaseCommand {
       '-pix_fmt',
       'yuv420p',
 
+      // Optional: Limit the number of threads for real-time processing
+      '-threads',
+      '1',
+
       // AAC Audio Stream
       '-c:a:0',
       'aac',
@@ -698,10 +727,6 @@ export default class NestmtxStream extends BaseCommand {
       '-listen',
       '0',
       `unix:${this.#cameraPassthroughSock}`, // Send output to Unix socket
-
-      // Optional: Limit the number of threads for real-time processing
-      '-threads',
-      '1',
     ]
 
     this.#connectingStreamAbortController.abort()
@@ -994,7 +1019,7 @@ a=rtcp:${audioRTCPPort}
       '-y', // Overwrite output files
       '-hide_banner', // Hide FFmpeg banner
       '-loglevel',
-      env.get('FFMPEG_LOG_LEVEL', 'warning'), // Log level set to warning
+      this.#ffmpegLogLevel,
       '-protocol_whitelist',
       'file,crypto,data,udp,rtp',
       '-fflags',
@@ -1033,6 +1058,10 @@ a=rtcp:${audioRTCPPort}
       '-max_delay',
       '1000000', // Max delay of 1000ms
 
+      // Optional: Limit the number of threads for real-time processing
+      '-threads',
+      '1',
+
       // AAC Audio Stream (track 1)
       '-c:a:0',
       'aac',
@@ -1063,10 +1092,6 @@ a=rtcp:${audioRTCPPort}
 
       // Output to Unix socket
       `unix:${this.#cameraPassthroughSock}`, // Unix socket output for the MPEG-TS stream
-
-      // Optional: Limit the number of threads for real-time processing
-      '-threads',
-      '1',
     ]
 
     this.#cameraStreamer = execa(ffmpegBinary, ffmpegArgs, {

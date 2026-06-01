@@ -1035,6 +1035,7 @@ t=0 0
 
 m=video ${videoPort} RTP/AVP 97
 a=rtpmap:97 H264/90000
+a=fmtp:97 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f
 a=recvonly
 a=rtcp:${videoRTCPPort}
 

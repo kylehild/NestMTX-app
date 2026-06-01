@@ -307,6 +307,25 @@ export default class NestmtxStream extends BaseCommand {
     return true
   }
 
+  #getCodecFmtpFromSdp(
+    sdp: string,
+    mediaKind: 'audio' | 'video',
+    codecName: string,
+    payloadType: number
+  ) {
+    const lines = sdp.split(/\r?\n/).map((line) => line.trim())
+    const mediaLine = lines.find((line) => line.startsWith(`m=${mediaKind} `))
+    const payloadTypes = mediaLine ? mediaLine.split(/\s+/).slice(3) : [String(payloadType)]
+    const matchedPayloadType =
+      payloadTypes.find((pt) =>
+        lines.some((line) =>
+          line.toLowerCase().startsWith(`a=rtpmap:${pt} ${codecName.toLowerCase()}/`)
+        )
+      ) ?? String(payloadType)
+    const fmtpPrefix = `a=fmtp:${matchedPayloadType} `
+    return lines.find((line) => line.startsWith(fmtpPrefix))?.slice(fmtpPrefix.length).trim()
+  }
+
   #onStreamerUnixSocketConnection(socket: UnixSocket) {
     socket.on('data', (raw) => {
       const valid = this.#validateRtpPacket(raw)
@@ -920,6 +939,8 @@ export default class NestmtxStream extends BaseCommand {
     const audioRtpBus = new EventEmitter({
       captureRejections: true,
     })
+    let videoPayloadType = 97
+    let audioPayloadType = 96
 
     const rtpPromiseAbortController = new AbortController()
 
@@ -945,6 +966,7 @@ export default class NestmtxStream extends BaseCommand {
       const { unSubscribe } = event.track.onReceiveRtp.subscribe((rtp) => {
         switch (event.track.kind) {
           case 'video':
+            videoPayloadType = rtp.header.payloadType
             udp.send(rtp.serialize(), videoPort, '0.0.0.0', (error, _bytes) => {
               if (error) {
                 this.#cameraStreamLogger.error(error)
@@ -956,6 +978,7 @@ export default class NestmtxStream extends BaseCommand {
             break
 
           case 'audio':
+            audioPayloadType = rtp.header.payloadType
             udp.send(rtp.serialize(), audioPort, '0.0.0.0', (error, _bytes) => {
               if (error) {
                 this.#cameraStreamLogger.error(error)
@@ -1026,6 +1049,9 @@ export default class NestmtxStream extends BaseCommand {
     })
 
     await Promise.all([videoRtpSending, audioRtpSending])
+    const h264Fmtp =
+      this.#getCodecFmtpFromSdp(results!.answerSdp, 'video', 'H264', videoPayloadType) ||
+      'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f'
 
     const sdp = `v=0
 o=- 0 0 IN IP4 127.0.0.1
@@ -1033,14 +1059,14 @@ s=FFmpeg RTP Stream
 c=IN IP4 127.0.0.1
 t=0 0
 
-m=video ${videoPort} RTP/AVP 97
-a=rtpmap:97 H264/90000
-a=fmtp:97 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f
+m=video ${videoPort} RTP/AVP ${videoPayloadType}
+a=rtpmap:${videoPayloadType} H264/90000
+a=fmtp:${videoPayloadType} ${h264Fmtp}
 a=recvonly
 a=rtcp:${videoRTCPPort}
 
-m=audio ${audioPort} RTP/AVP 96
-a=rtpmap:96 OPUS/48000/2
+m=audio ${audioPort} RTP/AVP ${audioPayloadType}
+a=rtpmap:${audioPayloadType} OPUS/48000/2
 a=recvonly
 a=rtcp:${audioRTCPPort}
 `
